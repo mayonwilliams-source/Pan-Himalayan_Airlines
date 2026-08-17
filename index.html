@@ -264,6 +264,9 @@ function bearing(lat1,lon1,lat2,lon2){
 }
 function parseDuration(str){
   if(!str) return 0;
+  // Handle gviz time format: Date(1899,11,30,H,M,S)
+  const dateMatch=String(str).match(/Date\(\d+,\d+,\d+,(\d+),(\d+),(\d+)\)/);
+  if(dateMatch) return parseInt(dateMatch[1])+(parseInt(dateMatch[2])||0)/60+(parseInt(dateMatch[3])||0)/3600;
   const parts=String(str).split(':').map(Number);
   return parts[0]+(parts[1]||0)/60+(parts[2]||0)/3600;
 }
