@@ -794,6 +794,9 @@ async function init(){
       });
     });
 
+    console.log('Aircraft sample:', JSON.stringify(aircraftData[0]));
+    console.log('RouteMap sample:', JSON.stringify(Object.values(routeMap)[0]));
+    
     const typeGroups={};
     aircraftData.forEach(ac=>{
       if(!typeGroups[ac.type]) typeGroups[ac.type]=[];
