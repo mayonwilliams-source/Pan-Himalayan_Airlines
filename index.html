@@ -750,6 +750,11 @@ async function init(){
     const scheduleRaw=tableToObjects(await fetchSheet(cfg.sheets.schedule))
       .filter(r=>r['Aircraft']&&r[cfg.scheduleTypeCol]);
 
+    console.log('Schedule rows:', scheduleRaw.length);
+  console.log('Schedule cols:', Object.keys(scheduleRaw[0]||{}));
+  console.log('Fleet rows:', fleet.length);
+  console.log('Routes:', Object.keys(routeMap).length, Object.keys(routeMap).slice(0,5));
+
     const activeIATA=new Set();
     Object.values(routeMap).forEach(route=>{
       activeIATA.add(route.hub);
