@@ -24,13 +24,6 @@
     .tz .time { font-size:15px; font-weight:600; color:var(--zanskar); font-variant-numeric:tabular-nums; letter-spacing:1px; }
     #fleet-count { font-size:12px; color:#444; letter-spacing:1px; }
 
-    /* Airline toggle */
-    #airline-toggle { display:flex; align-items:center; gap:8px; font-size:11px; font-family:'Marcellus SC',serif; letter-spacing:1px; }
-    #airline-toggle .al-label { color:#554466; cursor:pointer; transition:color 0.2s; }
-    #airline-toggle .al-label.active { color:var(--lilac); }
-    .toggle-track { width:36px; height:18px; background:#1a0a2a; border:1px solid var(--border); border-radius:9px; cursor:pointer; position:relative; transition:background 0.2s; flex-shrink:0; }
-    .toggle-thumb { width:12px; height:12px; background:var(--lilac); border-radius:50%; position:absolute; top:2px; left:2px; transition:left 0.2s; }
-    .toggle-track.right .toggle-thumb { left:20px; }
 
     #main { display:flex; flex:1; overflow:hidden; position:relative; }
     #map { flex:1; background:var(--bg); }
@@ -145,13 +138,6 @@
     <div class="tz"><div class="label">UTC</div><div class="time" id="clock-utc">--:--:--</div></div>
     <div class="tz"><div class="label">Local</div><div class="time" id="clock-local">--:--:--</div></div>
   </div>
-  <div id="airline-toggle">
-    <span class="al-label active" id="label-as">AS</span>
-    <div class="toggle-track" id="toggle-track" onclick="switchAirline()">
-      <div class="toggle-thumb" id="toggle-thumb"></div>
-    </div>
-    <span class="al-label" id="label-aen">AEn</span>
-  </div>
   <div id="fleet-count">— aircraft</div>
 </div>
 
@@ -178,60 +164,17 @@
 <script>
 const HUB_TZ={VNKT:345,VQPR:360,VEGT:330,ZULS:480,VNPR:345,VNBW:345,VILH:330,OPSD:300};
 
-// ── AIRLINE CONFIGS ───────────────────────────
-const AIRLINES={
-  AS:{
-    sheetId:'1Gn2t_5jhLf_gPHJN5ojSX270ImGtH2EYZi4HbwDgZJk',
-    sheets:{
-      fleet:'Fleet Information',
-      airports:'Airport Information',
-      routes:'Routes Master List',
-      schedule:'Aircraft Schedule',
-    },
-    // gviz column header prefixes
-    fleetTypeCol:'Fleet Information Aircraft Type',
-    scheduleTypeCol:'Aircraft Schedule Aircraft Type',
-    airportIATACol:'Airport Information IATA',
-    routeNoCol:'Route Master List No.',
-  },
-  AEn:{
-    sheetId:'1ucly_x-T_Mu0hOJCRZLD3frXEsTDQ5ARQ5Q2G7Rc9S4',
-    sheets:{
-      fleet:'H3 Fleet Information',
-      airports:'H3 Airport Information',
-      routes:'H3 Routes Master List',
-      schedule:'H3 Aircraft Schedule',
-    },
-    fleetTypeCol:'Fleet Information Aircraft Type',
-    scheduleTypeCol:'Aircraft Schedule Aircraft Type',
-    airportIATACol:'Airport Information IATA',
-    routeNoCol:'Route Master List No.',
-  },
-};
-
-let currentAirline='AS';
+// ── PAN-HIMALAYAN AIRLINES CONFIG ─────────────────────────────────────────
+const SHEET_ID='1ucly_x-T_Mu0hOJCRZLD3frXEsTDQ5ARQ5Q2G7Rc9S4';
+const SHEETS={fleet:'H3 Fleet Information',airports:'H3 Airport Information',routes:'H3 Routes Master List',schedule:'H3 Aircraft Schedule'};
+const FLEET_TYPE_COL='Fleet Information Aircraft Type';
+const SCHEDULE_TYPE_COL='Aircraft Schedule Aircraft Type';
+const AIRPORT_IATA_COL='Airport Information IATA';
+const ROUTE_NO_COL='Route Master List No.';
 let refreshInterval=null;
 
-function switchAirline(){
-  currentAirline=currentAirline==='AS'?'AEn':'AS';
-  const isAEn=currentAirline==='AEn';
-  document.getElementById('toggle-track').classList.toggle('right',isAEn);
-  document.getElementById('label-as').classList.toggle('active',!isAEn);
-  document.getElementById('label-aen').classList.toggle('active',isAEn);
-  // Clear interval, close panel, re-init
-  if(refreshInterval) clearInterval(refreshInterval);
-  closeInfoPanel();
-  // Clear all map layers except tile layer
-  map.eachLayer(l=>{ if(!(l instanceof L.TileLayer)) map.removeLayer(l); });
-  document.getElementById('fleet-list').innerHTML='<div style="padding:20px;color:#443355;font-size:13px;">Loading...</div>';
-  document.getElementById('fleet-count').textContent='— aircraft';
-  document.getElementById('loading').style.display='flex';
-  init();
-}
-
 function sheetUrl(sheetName){
-  const cfg=AIRLINES[currentAirline];
-  return `https://docs.google.com/spreadsheets/d/${cfg.sheetId}/gviz/tq?tqx=out:json&sheet=${encodeURIComponent(sheetName)}`;
+  return `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json&sheet=${encodeURIComponent(sheetName)}`;
 }
 
 function haversineNmi(lat1,lon1,lat2,lon2){
@@ -462,7 +405,8 @@ function collapseSidebar(){
 }
 
 const map=L.map('map',{center:[27.5,87],zoom:5});
-L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',{attribution:'© OpenStreetMap © CARTO',maxZoom:19}).addTo(map);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'© OpenStreetMap contributors',maxZoom:19}).addTo(map);
+(function(){const s=document.createElement('style');s.textContent='.leaflet-tile{filter:brightness(0.42) saturate(0.25) hue-rotate(210deg);}';document.head.appendChild(s);})();
 
 async function fetchSheet(sheetName){
   const resp=await fetch(sheetUrl(sheetName));
@@ -750,21 +694,20 @@ function addOrUpdateMarker(ac,pos,route,routeMap,airports,planeMarkers){
 
 async function init(){
   try{
-    const cfg=AIRLINES[currentAirline];
-    console.log('Init started —',currentAirline);
+    console.log('Init started');
     document.getElementById('loading-msg').textContent='Loading fleet...';
-    const fleetRaw=tableToObjects(await fetchSheet(cfg.sheets.fleet));
-    const fleet=fleetRaw.filter(r=>r[cfg.fleetTypeCol]&&r['Registration']);
+    const fleetRaw=tableToObjects(await fetchSheet(SHEETS.fleet));
+    const fleet=fleetRaw.filter(r=>r[FLEET_TYPE_COL]&&r['Registration']);
 
     document.getElementById('loading-msg').textContent='Loading routes...';
-    const routesRaw=tableToObjects(await fetchSheet(cfg.sheets.routes))
-      .filter(r=>r[cfg.routeNoCol]&&r['Route']&&r['Count']>0);
+    const routesRaw=tableToObjects(await fetchSheet(SHEETS.routes))
+      .filter(r=>r[ROUTE_NO_COL]&&r['Route']&&r['Count']>0);
     const routeMap={};
-    routesRaw.forEach(r=>{routeMap[r[cfg.routeNoCol]]={id:r[cfg.routeNoCol],hub:r['Hub'],dests:r['Route'],startTime:r['Start Time (LT)']?parseTime(r['Start Time (LT)']):6.0};});
+    routesRaw.forEach(r=>{routeMap[r[ROUTE_NO_COL]]={id:r[ROUTE_NO_COL],hub:r['Hub'],dests:r['Route'],startTime:r['Start Time (LT)']?parseTime(r['Start Time (LT)']):6.0};});
 
     document.getElementById('loading-msg').textContent='Loading schedule...';
-    const scheduleRaw=tableToObjects(await fetchSheet(cfg.sheets.schedule))
-      .filter(r=>r['Aircraft']&&r[cfg.scheduleTypeCol]);
+    const scheduleRaw=tableToObjects(await fetchSheet(SHEETS.schedule))
+      .filter(r=>r['Aircraft']&&r[SCHEDULE_TYPE_COL]);
 
     console.log('Schedule rows:', scheduleRaw.length);
   console.log('Schedule cols:', Object.keys(scheduleRaw[0]||{}));
@@ -779,11 +722,11 @@ async function init(){
     scheduleRaw.forEach(row=>{if(row['Homebase']) activeIATA.add(row['Homebase']);});
 
     document.getElementById('loading-msg').textContent='Loading airports...';
-    const airportsRaw=tableToObjects(await fetchSheet(cfg.sheets.airports))
-      .filter(r=>r[cfg.airportIATACol]&&r['Lat.']&&r['Lon.']);
+    const airportsRaw=tableToObjects(await fetchSheet(SHEETS.airports))
+      .filter(r=>r[AIRPORT_IATA_COL]&&r['Lat.']&&r['Lon.']);
     const airportsByICAO={};
     airportsRaw.forEach(ap=>{
-      const iata=ap[cfg.airportIATACol],icao=ap['ICAO'];
+      const iata=ap[AIRPORT_IATA_COL],icao=ap['ICAO'];
       if(!activeIATA.has(iata)&&!activeIATA.has(icao)) return;
       const obj={lat:ap['Lat.'],lon:ap['Lon.'],iata,icao,name:ap['Airport Name'],elev:ap['Elevation (ft)']||null};
       airportsByICAO[icao]=obj;
@@ -802,7 +745,7 @@ async function init(){
       const fleetRow=fleet.find(f=>f['Registration']===reg);
       if(!fleetRow) return;
       aircraftData.push({
-        reg,type:row[cfg.scheduleTypeCol],homeBase:row['Homebase'],
+        reg,type:row[SCHEDULE_TYPE_COL],homeBase:row['Homebase'],
         status:fleetRow['Status'],speed:parseFloat(fleetRow['Average Cruise Speed [kts]'])||447,
         turnaround:fleetRow['Turnaround Time']||'0:45:00',
         schedule:['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'].map(d=>row[d]),
@@ -903,7 +846,7 @@ async function init(){
     },30000);
 
     document.getElementById('loading').style.display='none';
-    console.log('Done —',currentAirline);
+    console.log('Done');
   }catch(err){
     console.error('INIT ERROR:',err);
     document.getElementById('loading-msg').textContent='Error: '+err.message;
