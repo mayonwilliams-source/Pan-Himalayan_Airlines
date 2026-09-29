@@ -243,7 +243,7 @@ function buildLegs(ac,route,airports){
   }
   return legs;
 }
-function computePosition(ac,route,airports,nowUTC){
+function computePosition(ac,route,airports,nowUTC,routeMap){
   const hubICAO=ac.homeBase;
   const tzOffset=HUB_TZ[hubICAO]||345;
   const nowLocal=new Date(nowUTC.getTime()+tzOffset*60000);
@@ -255,7 +255,8 @@ function computePosition(ac,route,airports,nowUTC){
   const yesterdayRawDow=(jsDow-1+7)%7;
   const yesterdaySd=yesterdayRawDow===0?6:yesterdayRawDow-1;
   const yesterdayRouteNum=ac.routeNums[yesterdaySd];
-  const yesterdayRoute=yesterdayRouteNum?(window._routeMap?.[yesterdayRouteNum]||route):null;
+  const rm=routeMap||window._routeMap||{};
+  const yesterdayRoute=yesterdayRouteNum?(rm[yesterdayRouteNum]||null):null;
   if(yesterdayRoute){
     const legs=buildLegs(ac,yesterdayRoute,airports);
     const startHrs=yesterdayRoute.startTime!==null?yesterdayRoute.startTime:6.0;
@@ -777,7 +778,8 @@ async function init(){
       const sheetDow=jsDow===0?6:jsDow-1;
       const routeNum=ac.routeNums[sheetDow];
       const route=routeNum?routeMap[routeNum]:null;
-      const pos=route&&hubAp?computePosition(ac,route,airportsByICAO,now):{status:'ground',lat:hubAp?.lat||null,lon:hubAp?.lon||null};
+      // Always call computePosition so yesterday's overnight route is checked even when today has no route
+      const pos=hubAp?computePosition(ac,route,airportsByICAO,now,routeMap):{status:'ground',lat:null,lon:null};
       posCache[ac.reg]=pos;
       addOrUpdateMarker(ac,pos,route,routeMap,airportsByICAO,planeMarkers);
     });
@@ -838,8 +840,9 @@ async function init(){
         const sheetDow=jsDow===0?6:jsDow-1;
         const routeNum=ac.routeNums[sheetDow];
         const route=routeNum?routeMap[routeNum]:null;
-        if(!route) return;
-        const pos=computePosition(ac,route,airportsByICAO,now);
+        const hubAp2=airportsByICAO[ac.homeBase];
+        if(!hubAp2) return;
+        const pos=computePosition(ac,route,airportsByICAO,now,routeMap);
         posCache[ac.reg]=pos;
         addOrUpdateMarker(ac,pos,route,routeMap,airportsByICAO,planeMarkers);
       });
