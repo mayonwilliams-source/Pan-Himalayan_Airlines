@@ -263,7 +263,7 @@ function computePosition(ac,route,airports,nowUTC){
       for(let i=0;i<legs.length;i++){
         const leg=legs[i];
         if(localHrsInYesterdayFrame>=leg.deptHrs&&localHrsInYesterdayFrame<leg.arrHrs){
-          const t=(localHrs-leg.deptHrs)/(leg.arrHrs-leg.deptHrs);
+          const t=(localHrsInYesterdayFrame-leg.deptHrs)/(leg.arrHrs-leg.deptHrs);
           const pos=greatCircleInterp(leg.fromLat,leg.fromLon,leg.toLat,leg.toLon,t);
           const tAhead=Math.min(t+0.005,1);
           const posAhead=greatCircleInterp(leg.fromLat,leg.fromLon,leg.toLat,leg.toLon,tAhead);
@@ -295,7 +295,7 @@ function computePosition(ac,route,airports,nowUTC){
           const tAhead=Math.min(t+0.005,1);
           const posAhead=greatCircleInterp(leg.fromLat,leg.fromLon,leg.toLat,leg.toLon,tAhead);
           const localHeading=bearing(pos.lat,pos.lon,posAhead.lat,posAhead.lon);
-          return {status:'airborne',lat:pos.lat,lon:pos.lon,heading:localHeading,fromIATA:leg.fromIATA,toIATA:leg.toIATA,deptHrs:leg.deptHrs-24,arrHrs:leg.arrHrs-24,legT:t,leg,hubICAO};
+          return {status:'airborne',lat:pos.lat,lon:pos.lon,heading:localHeading,fromIATA:leg.fromIATA,toIATA:leg.toIATA,deptHrs:leg.deptHrs,arrHrs:leg.arrHrs,legT:t,leg,hubICAO};
     }
     if(i<legs.length-1&&localHrs>=leg.arrHrs&&localHrs<legs[i+1].deptHrs){
       return {status:'ground',lat:leg.toLat,lon:leg.toLon,atIATA:leg.toIATA,hubICAO};
@@ -406,7 +406,7 @@ function collapseSidebar(){
 
 const map=L.map('map',{center:[27.5,87],zoom:5});
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'© OpenStreetMap contributors',maxZoom:19}).addTo(map);
-(function(){const s=document.createElement('style');s.textContent='.leaflet-tile{filter:brightness(0.42) saturate(0.25) hue-rotate(210deg);}';document.head.appendChild(s);})();
+(function(){const s=document.createElement('style');s.textContent='.leaflet-tile{filter:invert(100%) hue-rotate(180deg) brightness(0.75) saturate(0.55);}';document.head.appendChild(s);})();
 
 async function fetchSheet(sheetName){
   const resp=await fetch(sheetUrl(sheetName));
@@ -728,7 +728,7 @@ async function init(){
     airportsRaw.forEach(ap=>{
       const iata=ap[AIRPORT_IATA_COL],icao=ap['ICAO'];
       if(!activeIATA.has(iata)&&!activeIATA.has(icao)) return;
-      const obj={lat:ap['Lat.'],lon:ap['Lon.'],iata,icao,name:ap['Airport Name'],elev:ap['Elevation (ft)']||null};
+      const obj={lat:parseFloat(ap['Lat.']),lon:parseFloat(ap['Lon.']),iata,icao,name:ap['Airport Name'],elev:ap['Elevation (ft)']||null};
       airportsByICAO[icao]=obj;
       const isHub=Object.keys(HUB_TZ).includes(icao);
       const marker=L.circleMarker([obj.lat,obj.lon],{
