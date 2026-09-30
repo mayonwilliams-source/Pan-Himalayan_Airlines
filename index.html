@@ -22,7 +22,10 @@
     .tz { display:flex; flex-direction:column; align-items:center; gap:1px; }
     .tz .label { font-size:9px; letter-spacing:2px; text-transform:uppercase; color:var(--lilac); }
     .tz .time { font-size:15px; font-weight:600; color:var(--zanskar); font-variant-numeric:tabular-nums; letter-spacing:1px; }
-    #fleet-count { font-size:12px; color:#444; letter-spacing:1px; }
+    #fleet-count { font-size:12px; color:#554466; letter-spacing:1px; display:flex; align-items:center; gap:10px; }
+    #fleet-count .fc-total { color:#887799; }
+    #fleet-count .fc-divider { color:#2a1a3a; }
+    #fleet-count .fc-airborne { color:var(--turquoise); }
 
 
     #main { display:flex; flex:1; overflow:hidden; position:relative; }
@@ -138,7 +141,7 @@
     <div class="tz"><div class="label">UTC</div><div class="time" id="clock-utc">--:--:--</div></div>
     <div class="tz"><div class="label">Local</div><div class="time" id="clock-local">--:--:--</div></div>
   </div>
-  <div id="fleet-count">— aircraft</div>
+  <div id="fleet-count"><span class="fc-total">— in Active Fleet</span><span class="fc-divider">|</span><span class="fc-airborne">— Airborne</span></div>
 </div>
 
 <div id="main">
@@ -406,8 +409,7 @@ function collapseSidebar(){
 }
 
 const map=L.map('map',{center:[27.5,87],zoom:5});
-L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'© OpenStreetMap contributors',maxZoom:19}).addTo(map);
-(function(){const s=document.createElement('style');s.textContent='.leaflet-tile{filter:invert(100%) hue-rotate(180deg) brightness(0.75) saturate(0.55);}';document.head.appendChild(s);})();
+L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',{attribution:'&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',subdomains:'abcd',maxZoom:20}).addTo(map);
 
 async function fetchSheet(sheetName){
   const resp=await fetch(sheetUrl(sheetName));
@@ -765,7 +767,13 @@ async function init(){
 
     const listEl=document.getElementById('fleet-list');
     listEl.innerHTML='';
-    document.getElementById('fleet-count').textContent=`${fleet.length} aircraft`;
+    function updateFleetCount(){
+      const airborne=Object.values(posCache).filter(p=>p.status==='airborne').length;
+      const fc=document.getElementById('fleet-count');
+      fc.querySelector('.fc-total').textContent=`${fleet.length} in Active Fleet`;
+      fc.querySelector('.fc-airborne').textContent=`${airborne} Airborne`;
+    }
+    updateFleetCount();
 
     const planeMarkers={};
     const posCache={};
@@ -846,6 +854,7 @@ async function init(){
         posCache[ac.reg]=pos;
         addOrUpdateMarker(ac,pos,route,routeMap,airportsByICAO,planeMarkers);
       });
+      updateFleetCount();
     },30000);
 
     document.getElementById('loading').style.display='none';
