@@ -767,13 +767,6 @@ async function init(){
 
     const listEl=document.getElementById('fleet-list');
     listEl.innerHTML='';
-    function updateFleetCount(){
-      const airborne=Object.values(posCache).filter(p=>p.status==='airborne').length;
-      const fc=document.getElementById('fleet-count');
-      fc.querySelector('.fc-total').textContent=`${fleet.length} in Active Fleet`;
-      fc.querySelector('.fc-airborne').textContent=`${airborne} Airborne`;
-    }
-    updateFleetCount();
 
     const planeMarkers={};
     const posCache={};
@@ -791,6 +784,14 @@ async function init(){
       posCache[ac.reg]=pos;
       addOrUpdateMarker(ac,pos,route,routeMap,airportsByICAO,planeMarkers);
     });
+
+    function updateFleetCount(){
+      const airborne=Object.values(posCache).filter(p=>p.status==='airborne').length;
+      const fc=document.getElementById('fleet-count');
+      fc.querySelector('.fc-total').textContent=`${fleet.length} in Active Fleet`;
+      fc.querySelector('.fc-airborne').textContent=`${airborne} Airborne`;
+    }
+    updateFleetCount();
 
     Object.entries(typeGroups).forEach(([type,acs])=>{
       const groupDiv=document.createElement('div');
