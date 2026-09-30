@@ -231,15 +231,23 @@ function buildLegs(ac,route,airports){
   const startHrs=route.startTime!==null?route.startTime:6.0;
   const speedKts=ac.speed||447;
   const turnaround=parseDuration(ac.turnaround);
+  const offsets=route.offsets||[];
   const legs=[];
   let cursor=startHrs;
   for(let i=0;i<dests.length;i++){
     const destAp=Object.values(airports).find(a=>a.iata===dests[i]);
     if(!destAp) continue;
     const dist=haversineNmi(hubAp.lat,hubAp.lon,destAp.lat,destAp.lon);
-    const ft=dist/speedKts+0.5;
+    // Round flight time to nearest 5 minutes (matching sheet formula)
+    const ftRaw=dist/speedKts+35/60;
+    const ft=Math.round(ftRaw*12)/12;
+    // offsets[i*2]: extra minutes at hub before outbound to dest i
+    // offsets[i*2+1]: extra minutes at dest i before return to hub
+    const extraBeforeOut=(offsets[i*2]||0)/60;
+    const extraBeforeReturn=(offsets[i*2+1]||0)/60;
+    cursor+=extraBeforeOut;
     legs.push({fromIATA:hubAp.iata,toIATA:dests[i],fromLat:hubAp.lat,fromLon:hubAp.lon,toLat:destAp.lat,toLon:destAp.lon,deptHrs:cursor,arrHrs:cursor+ft});
-    cursor+=ft+turnaround;
+    cursor+=ft+turnaround+extraBeforeReturn;
     legs.push({fromIATA:dests[i],toIATA:hubAp.iata,fromLat:destAp.lat,fromLon:destAp.lon,toLat:hubAp.lat,toLon:hubAp.lon,deptHrs:cursor,arrHrs:cursor+ft});
     cursor+=ft;
     if(i<dests.length-1) cursor+=turnaround;
@@ -706,7 +714,11 @@ async function init(){
     const routesRaw=tableToObjects(await fetchSheet(SHEETS.routes))
       .filter(r=>r[ROUTE_NO_COL]&&r['Route']&&r['Count']>0);
     const routeMap={};
-    routesRaw.forEach(r=>{routeMap[r[ROUTE_NO_COL]]={id:r[ROUTE_NO_COL],hub:r['Hub'],dests:r['Route'],startTime:r['Start Time (LT)']?parseTime(r['Start Time (LT)']):6.0};});
+    routesRaw.forEach(r=>{
+      const rawOffsets=r['Offsets']??r['Route Master List Offsets']??null;
+      const offsets=rawOffsets?String(rawOffsets).split(',').map(s=>{const v=parseFloat(s.trim());return isNaN(v)?0:v;}):[];
+      routeMap[r[ROUTE_NO_COL]]={id:r[ROUTE_NO_COL],hub:r['Hub'],dests:r['Route'],startTime:r['Start Time (LT)']?parseTime(r['Start Time (LT)']):6.0,offsets};
+    });
 
     document.getElementById('loading-msg').textContent='Loading schedule...';
     const scheduleRaw=tableToObjects(await fetchSheet(SHEETS.schedule))
