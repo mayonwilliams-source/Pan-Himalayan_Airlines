@@ -715,7 +715,7 @@ async function init(){
       .filter(r=>r[ROUTE_NO_COL]&&r['Route']&&r['Count']>0);
     const routeMap={};
     routesRaw.forEach(r=>{
-      const rawOffsets=r['Offsets']??r['Route Master List Offsets']??null;
+      const rawOffsets=r['Departure Offset']??null;
       const offsets=rawOffsets?String(rawOffsets).split(',').map(s=>{const v=parseFloat(s.trim());return isNaN(v)?0:v;}):[];
       routeMap[r[ROUTE_NO_COL]]={id:r[ROUTE_NO_COL],hub:r['Hub'],dests:r['Route'],startTime:r['Start Time (LT)']?parseTime(r['Start Time (LT)']):6.0,offsets};
     });
