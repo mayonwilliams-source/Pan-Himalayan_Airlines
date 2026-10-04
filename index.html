@@ -262,34 +262,37 @@ function computePosition(ac,route,airports,nowUTC,routeMap){
   const jsDow=nowLocal.getUTCDay();
   const hubAp=airports[hubICAO];
   if(!hubAp) return {status:'ground',lat:null,lon:null,hubICAO};
-  const localHrsInYesterdayFrame=localHrs+24;
-  const yesterdayRawDow=(jsDow-1+7)%7;
-  const yesterdaySd=yesterdayRawDow===0?6:yesterdayRawDow-1;
-  const yesterdayRouteNum=ac.routeNums[yesterdaySd];
   const rm=routeMap||window._routeMap||{};
-  const yesterdayRoute=yesterdayRouteNum?(rm[yesterdayRouteNum]||null):null;
-  if(yesterdayRoute){
-    const legs=buildLegs(ac,yesterdayRoute,airports);
-    const startHrs=yesterdayRoute.startTime!==null?yesterdayRoute.startTime:6.0;
-    if(localHrsInYesterdayFrame>=startHrs){
-      for(let i=0;i<legs.length;i++){
-        const leg=legs[i];
-        if(localHrsInYesterdayFrame>=leg.deptHrs&&localHrsInYesterdayFrame<leg.arrHrs){
-          const t=(localHrsInYesterdayFrame-leg.deptHrs)/(leg.arrHrs-leg.deptHrs);
-          const pos=greatCircleInterp(leg.fromLat,leg.fromLon,leg.toLat,leg.toLon,t);
-          const tAhead=Math.min(t+0.005,1);
-          const posAhead=greatCircleInterp(leg.fromLat,leg.fromLon,leg.toLat,leg.toLon,tAhead);
-          const localHeading=bearing(pos.lat,pos.lon,posAhead.lat,posAhead.lon);
-          return {status:'airborne',lat:pos.lat,lon:pos.lon,heading:localHeading,fromIATA:leg.fromIATA,toIATA:leg.toIATA,deptHrs:leg.deptHrs-24,arrHrs:leg.arrHrs-24,legT:t,leg,hubICAO};
-        }
-        if(i<legs.length-1&&localHrsInYesterdayFrame>=leg.arrHrs&&localHrsInYesterdayFrame<legs[i+1].deptHrs){
-          return {status:'ground',lat:leg.toLat,lon:leg.toLon,atIATA:leg.toIATA,hubICAO};
-        }
+  // Check past routes up to 3 days back — covers multi-day long-haul schedules
+  for(let dayBack=1;dayBack<=3;dayBack++){
+    const frameHrs=localHrs+dayBack*24;
+    const rawDow=(jsDow-dayBack+7)%7;
+    const pastSd=rawDow===0?6:rawDow-1;
+    const pastRouteNum=ac.routeNums[pastSd];
+    const pastRoute=pastRouteNum?(rm[pastRouteNum]||null):null;
+    if(!pastRoute) continue;
+    const pastLegs=buildLegs(ac,pastRoute,airports);
+    if(!pastLegs.length) continue;
+    const pastStartHrs=pastRoute.startTime!==null?pastRoute.startTime:6.0;
+    if(frameHrs<pastStartHrs) continue;
+    // If we're past the last leg's arrival this route day is done; try further back
+    if(frameHrs>=pastLegs[pastLegs.length-1].arrHrs) continue;
+    for(let i=0;i<pastLegs.length;i++){
+      const leg=pastLegs[i];
+      if(frameHrs>=leg.deptHrs&&frameHrs<leg.arrHrs){
+        const t=(frameHrs-leg.deptHrs)/(leg.arrHrs-leg.deptHrs);
+        const pos=greatCircleInterp(leg.fromLat,leg.fromLon,leg.toLat,leg.toLon,t);
+        const tAhead=Math.min(t+0.005,1);
+        const posAhead=greatCircleInterp(leg.fromLat,leg.fromLon,leg.toLat,leg.toLon,tAhead);
+        const localHeading=bearing(pos.lat,pos.lon,posAhead.lat,posAhead.lon);
+        return {status:'airborne',lat:pos.lat,lon:pos.lon,heading:localHeading,fromIATA:leg.fromIATA,toIATA:leg.toIATA,deptHrs:leg.deptHrs-dayBack*24,arrHrs:leg.arrHrs-dayBack*24,legT:t,leg,hubICAO};
       }
-      if(localHrsInYesterdayFrame<legs[legs.length-1].arrHrs){
-        return {status:'ground',lat:hubAp.lat,lon:hubAp.lon,hubICAO,hubIATA:hubAp.iata};
+      if(i<pastLegs.length-1&&frameHrs>=leg.arrHrs&&frameHrs<pastLegs[i+1].deptHrs){
+        return {status:'ground',lat:leg.toLat,lon:leg.toLon,atIATA:leg.toIATA,hubICAO};
       }
     }
+    // frameHrs is in route window but no leg matched — waiting at hub for first leg
+    return {status:'ground',lat:hubAp.lat,lon:hubAp.lon,hubICAO,hubIATA:hubAp.iata};
   }
   const todaySd=jsDow===0?6:jsDow-1;
   const todayRouteNum=ac.routeNums[todaySd];
