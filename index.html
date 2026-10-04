@@ -53,11 +53,11 @@
     .fleet-item.expanded .fleet-item-header { background:var(--bg3); }
     .fleet-reg { font-family:'Marcellus SC',serif; font-size:13px; font-weight:600; color:var(--mist); letter-spacing:1px; white-space:nowrap; }
     .fleet-base { font-size:11px; color:var(--lilac); margin-top:2px; opacity:0.7; }
-    .fleet-status { font-size:9px; padding:2px 7px; border-radius:2px; font-weight:600; letter-spacing:1px; text-transform:uppercase; margin-top:2px; white-space:nowrap; }
-    .status-online      { background:#0a2a0a; color:var(--turquoise); border:1px solid #1a4a1a; }
-    .status-maintenance { background:#2a0a0a; color:var(--red);       border:1px solid #4a1a1a; }
-    .status-waiting     { background:#2a1a00; color:var(--marigold);  border:1px solid #4a3a00; }
-    .status-delivered   { background:#1a0a2a; color:var(--lilac);     border:1px solid #2a1a3a; }
+    .fleet-pos-tag { font-size:9px; padding:2px 7px; border-radius:2px; font-weight:600; letter-spacing:1px; text-transform:uppercase; margin-top:2px; white-space:nowrap; }
+    .pos-airborne   { background:#0a2a0a; color:var(--turquoise); border:1px solid #1a4a1a; }
+    .pos-ground     { background:#1a0a2a; color:var(--lilac);     border:1px solid #2a1a3a; }
+    .pos-maint      { background:#2a0a0a; color:var(--red);       border:1px solid #4a1a1a; }
+    .pos-waiting    { background:#2a1a00; color:var(--marigold);  border:1px solid #4a3a00; }
     .fleet-item-body { display:none; padding:8px 16px 12px; border-top:1px solid #1a0a2a; background:#050008; font-size:12px; line-height:1.8; }
     .fleet-item.expanded .fleet-item-body { display:block; }
     .info-row { display:flex; justify-content:space-between; margin-bottom:2px; }
@@ -452,6 +452,22 @@ function statusLabel(s){
   if(l.includes('waiting'))               return 'Waiting';
   return s;
 }
+function posTagClass(ac,pos){
+  const s=ac.status?ac.status.toLowerCase():'';
+  if(s.includes('maintenance')) return 'pos-maint';
+  if(s.includes('waiting')) return 'pos-waiting';
+  if(pos.status==='airborne') return 'pos-airborne';
+  return 'pos-ground';
+}
+function posTagLabel(ac,pos){
+  const s=ac.status?ac.status.toLowerCase():'';
+  if(s.includes('maintenance')) return 'Maintenance';
+  if(s.includes('waiting')) return 'Waiting';
+  if(pos.status==='airborne'&&pos.fromIATA&&pos.toIATA) return `${pos.fromIATA}→${pos.toIATA}`;
+  if(pos.status==='airborne') return 'Airborne';
+  const iata=pos.atIATA||pos.hubIATA||(window._airportsByICAO&&window._airportsByICAO[ac.homeBase]?.iata)||ac.homeBase;
+  return iata||'Ground';
+}
 function planeIcon(heading, type){
   const acType=String(type||'').toLowerCase();
   const rotation=((heading||0)+90)%360;
@@ -764,6 +780,7 @@ async function init(){
       if(!fleetRow) return;
       aircraftData.push({
         reg,type:row[SCHEDULE_TYPE_COL],homeBase:row['Homebase'],
+        name:fleetRow['Name']||null,
         status:fleetRow['Status'],speed:parseFloat(fleetRow['Average Cruise Speed [kts]'])||447,
         turnaround:fleetRow['Turnaround Time']||'0:45:00',
         schedule:['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'].map(d=>row[d]),
@@ -822,13 +839,14 @@ async function init(){
         const div=document.createElement('div');
         div.className='fleet-item';
         div.id='card-'+ac.reg;
+        const pos0=posCache[ac.reg]||{status:'ground'};
         div.innerHTML=`
           <div class="fleet-item-header" onclick="expandCard('${ac.reg}')">
             <div>
               <div class="fleet-reg">${ac.reg}</div>
-              <div class="fleet-base">${ac.homeBase}</div>
+              <div class="fleet-base">${ac.name||ac.homeBase}</div>
             </div>
-            <div class="fleet-status ${statusClass(ac.status)}">${statusLabel(ac.status)}</div>
+            <div class="fleet-pos-tag ${posTagClass(ac,pos0)}">${posTagLabel(ac,pos0)}</div>
           </div>
           <div class="fleet-item-body"></div>`;
         groupBody.appendChild(div);
@@ -869,6 +887,12 @@ async function init(){
         const pos=computePosition(ac,route,airportsByICAO,now,routeMap);
         posCache[ac.reg]=pos;
         addOrUpdateMarker(ac,pos,route,routeMap,airportsByICAO,planeMarkers);
+        // Update sidebar position tag
+        const card=document.getElementById('card-'+ac.reg);
+        if(card){
+          const tag=card.querySelector('.fleet-pos-tag');
+          if(tag){tag.className='fleet-pos-tag '+posTagClass(ac,pos);tag.textContent=posTagLabel(ac,pos);}
+        }
       });
       updateFleetCount();
     },30000);
