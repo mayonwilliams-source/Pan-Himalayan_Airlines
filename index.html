@@ -120,6 +120,20 @@
     #loading .spinner { width:36px; height:36px; border:2px solid var(--border); border-top-color:var(--zanskar); border-radius:50%; animation:spin 0.9s linear infinite; }
     #loading .msg { font-size:12px; color:#443355; letter-spacing:1px; }
     @keyframes spin { to { transform:rotate(360deg); } }
+    /* Shared-airport pill markers */
+    .shared-pill { display:flex; border-radius:5px; overflow:hidden; border:1px solid rgba(0,0,0,0.55); height:11px; cursor:pointer; }
+    .shared-pill-seg { flex:1; }
+    /* Partner overlay panel */
+    .partner-overlay-panel { background:var(--bg2); border:1px solid var(--border); border-radius:4px; padding:10px 13px; min-width:168px; }
+    .po-title { font-family:'Marcellus SC',serif; font-size:9px; letter-spacing:2px; text-transform:uppercase; color:var(--zanskar); margin-bottom:9px; }
+    .po-row { display:flex; align-items:center; gap:8px; margin-bottom:6px; cursor:pointer; user-select:none; }
+    .po-row:last-child { margin-bottom:0; }
+    .po-dot { width:10px; height:10px; border-radius:50%; flex-shrink:0; }
+    .po-label { font-size:12px; color:var(--mist); flex:1; }
+    .po-toggle { width:32px; height:16px; border-radius:8px; background:#1a0a2a; border:1px solid #2a1a3a; position:relative; transition:background 0.2s; flex-shrink:0; }
+    .po-toggle.on { background:#5c158a; border-color:#7c35aa; }
+    .po-toggle::after { content:''; position:absolute; width:12px; height:12px; border-radius:50%; background:#665577; top:1px; left:1px; transition:left 0.2s,background 0.2s; }
+    .po-toggle.on::after { left:17px; background:var(--mist); }
   </style>
 </head>
 <body>
@@ -764,13 +778,19 @@ async function init(){
       if(!activeIATA.has(iata)&&!activeIATA.has(icao)) return;
       const obj={lat:parseFloat(ap['Lat.']),lon:parseFloat(ap['Lon.']),iata,icao,name:ap['Airport Name'],elev:ap['Elevation (ft)']||null};
       airportsByICAO[icao]=obj;
-      const isHub=Object.keys(HUB_TZ).includes(icao);
+      const isPrimary=icao==='VNKT';
+      const isSecondary=!isPrimary&&Object.keys(HUB_TZ).includes(icao);
       const marker=L.circleMarker([obj.lat,obj.lon],{
-        radius:isHub?9:5,fillColor:isHub?'#5c158a':'#BFA2DC',
-        color:isHub?'#c7c9d3':'#5c158a',weight:isHub?2:1.5,fillOpacity:isHub?1:0.85,
+        radius:isPrimary?9:isSecondary?7:5,
+        fillColor:isPrimary?'#5c158a':isSecondary?'#c7c9d3':'#BFA2DC',
+        color:isPrimary?'#c7c9d3':isSecondary?'#5c158a':'#5c158a',
+        weight:isPrimary?2:isSecondary?1.5:1.5,
+        fillOpacity:isPrimary?1:isSecondary?0.9:0.85,
       }).addTo(map);
       marker.bindTooltip(`<b>${iata}</b> / ${icao}`,{className:'leaflet-tooltip',permanent:false,direction:'top'});
       marker.on('click',()=>openAirportPanel(obj,window._aircraftData,routeMap,airportsByICAO));
+      if(!window._phaMarkers) window._phaMarkers={};
+      window._phaMarkers[iata]={marker,obj,isPrimary,isSecondary};
     });
 
     const aircraftData=[];
@@ -906,6 +926,273 @@ async function init(){
 }
 
 init();
+</script>
+
+<script>
+/* ── Partner Airline Overlays ─────────────────────────────────────────── */
+const PARTNER_AIRLINES={
+  fitsair:{
+    name:'FitsAir',color:'#FF6B35',border:'#FF9A72',
+    primaryHub:'CMB',
+    secondaryHubs:['RML','HRI','JAF'],
+    secondaryColor:'#FFB899',secondaryBorder:'#CC4400',
+    airports:['AUH','ADD','GAN','AMD','ALC','ALA','AMM','AMS','AYT','ACE','ATH',
+      'ATL','AKL','BGW','BKK','DMK','BCN','PEK','PKX','BLR','BER','BBI','BOG',
+      'BNE','BRU','CAI','CUN','CPT','CMN','CEB','CSX','CLT','CTU','TFU','MAA',
+      'CNX','ORD','CKG','CJB','CMB','RML','CPH','DFW','DMM','DEL','DPS','DEN',
+      'DAC','DOH','DXB','DUB','DUS','EDI','EBB','FRA','FUK','GVA','GOI','TFS',
+      'CAN','GUA','KWE','GAU','HAK','HRI','HGH','HAN','HRB','HAV','HEL','SGN',
+      'HKG','IAH','HYD','ISB','IST','SAW','JAI','CGK','JED','CJU','JNB','KBL',
+      'CNN','KHI','KTM','COK','CCU','CCJ','KUL','KMG','KWI','LHE','LHW','LPA',
+      'LAS','LIM','LIS','STN','LTN','LHR','LGW','LAX','LKO','MAD','IXM','SEZ',
+      'AGP','MLE','BAH','MAN','IXE','MNL','MED','MEL','MEX','MIA','BGY','MXP',
+      'MSQ','DME','SVO','BOM','MUC','MCT','NAG','NBO','NKG','NNG','NNY','JFK',
+      'EWR','NCE','MCO','KIX','OSL','JAF','PMI','ORY','CDG','PBH','PER','KTI',
+      'PHX','HKT','MRU','OPO','PRG','PNQ','TAO','UIO','KEF','RUH','FCO','LED',
+      'SLL','SFO','SYX','SEA','ICN','GMP','SHA','PVG','SHJ','SHE','SZX','SIN',
+      'SOF','ARN','SUB','SYD','TPE','TAS','IKA','TLV','TRV','TRZ','TIR','HND',
+      'NRT','YYZ','TLS','URC','VIE','VTZ','WAW','WUH','XIY','XMN','RGN','CGO','ZRH']
+  },
+  transoxiana:{
+    name:'Transoxiana',color:'#00B4D8',border:'#48CAE4',
+    primaryHub:'TAS',
+    secondaryHubs:['NVI','SKD','BHK','AZN','FEG'],
+    secondaryColor:'#90E0EF',secondaryBorder:'#006E8A',
+    airports:['AAL','AAR','ABJ','ADE','ADF','AAQ','ANC','AZN','HQQ','AQJ','ACY',
+      'BWI','BAL','IXG','EGO','BIK','BIL','BGG','OXB','BOO','BOI','BLQ','BZN',
+      'BTK','BUF','BHK','BFV','CNS','CEE','ORD','RMO','CGP','YYQ','CLE','CMH',
+      'CKY','DSS','DCY','DRW','DAY','DSM','DTW','DAC','DTM','DRS','DBV','DUR',
+      'VDA','ETM','ERF','ERC','AOE','EHU','FEG','FWA','FRA','FNA','GBE','KOW',
+      'GYY','GOT','TFS','GRR','YHZ','MDT','EVE','HOF','HKG','HGI','DJJ','JSR',
+      'HLA','JNB','JNU','FCA','HRK','KIM','MQM','KBV','SUF','LHW','LEJ','LGG',
+      'LPI','LIS','LJU','SDD','MST','MSN','MLX','MPM','MUB','MFR','MED','ETZ',
+      'MKE','MSP','MSO','MGQ','YQM','ROB','SVO','ZIA','NMA','NVI','MQP','SWF',
+      'JFK','EWR','IAG','GOJ','ORF','NKC','NUX','OHD','VPE','PFO','PER','PHL',
+      'PIT','PDX','YXS','RJA','RDU','KEF','RIC','RMI','RIZ','ROI','SNO','SID',
+      'SLY','QSR','SZG','SKD','TRF','GNY','SYX','CUF','SEA','SVQ','SHW','SHL',
+      'FSD','VAS','GEG','SCW','ZYL','MFM','TAS','IKA','TMJ','NRT','TRS','TOS',
+      'TRD','ECN','UBN','UGC','USK','VRN','VIE','VOZ','IAD','YXY','GXH','YNT',
+      'YEI','DOY','YUS','ZAD','NZL','ZHY']
+  }
+};
+
+/* IATA → [lat, lon] for all partner-served airports */
+const IATA_COORDS={
+  AAL:[57.0928,9.8492],AAR:[56.3,10.619],ABJ:[5.2612,3.9263],ACE:[28.9455,-13.6052],ACY:[39.4576,-74.5772],
+  ADE:[12.8295,45.0288],ADF:[37.7544,38.4689],ADD:[8.9779,38.7993],AGP:[36.6749,-4.4991],AKL:[-37.0082,174.792],
+  ALA:[43.3521,77.0405],ALC:[38.2822,-0.558],AMD:[23.0769,72.6347],AMM:[31.7226,35.9932],AMS:[52.3086,4.7639],
+  ANC:[61.1744,-149.996],AOE:[39.8094,30.5194],AQJ:[29.6116,35.0181],ARN:[59.6519,17.9186],ATH:[37.9364,23.9445],
+  ATL:[33.6407,-84.4277],AUH:[24.4428,54.6511],AYT:[36.8987,30.8005],AZN:[40.7327,72.2936],
+  BAH:[26.2708,50.6336],BAL:[37.9216,41.1163],BCN:[41.2974,2.0833],BER:[52.3667,13.5033],BBI:[20.2444,85.8178],
+  BGG:[40.5959,30.0011],BGW:[33.2626,44.2346],BGY:[45.6739,9.7042],BHK:[39.7751,64.4833],BIK:[-1.1901,136.108],
+  BIL:[45.8077,-108.543],BKK:[13.6811,100.747],BLQ:[44.5354,11.2887],BLR:[13.1986,77.7066],BOG:[4.7016,-74.1469],
+  BOI:[43.5644,-116.223],BOM:[19.0896,72.8656],BOO:[67.2692,14.3653],BNE:[-27.3842,153.117],BRU:[50.9014,4.4844],
+  BTK:[56.3706,101.698],BUF:[42.9405,-78.7322],BZN:[45.7775,-111.153],BWI:[39.1754,-76.6683],BFV:[15.2252,102.953],
+  CAI:[30.1219,31.4056],CAN:[23.3924,113.299],CCJ:[11.1368,75.9553],CCU:[22.6527,88.4467],CEB:[10.3075,123.979],
+  CEE:[65.9,30.05],CGK:[-6.1256,106.656],CGP:[22.2496,91.8133],CJB:[11.03,77.0434],CJU:[33.5113,126.493],
+  CLT:[35.214,-80.9431],CMB:[7.1808,79.8841],CMH:[39.9998,-82.8919],CMN:[33.3675,-7.5899],CNN:[11.5188,76.0669],
+  COK:[9.9951,76.2672],CPH:[55.6181,12.656],CPT:[-33.9649,18.6017],CSX:[28.1892,113.22],CTU:[30.5786,103.947],
+  CUF:[44.5471,7.6232],CUN:[21.0365,-86.877],CKY:[9.5769,-13.6119],
+  DAC:[23.8433,90.3978],DAY:[39.9024,-84.2194],DBV:[42.5614,18.2682],DCY:[31.9917,118.833],DEL:[28.5562,77.1],
+  DEN:[39.8561,-104.674],DFW:[32.8998,-97.0403],DJJ:[-2.5795,140.517],DME:[55.4088,37.9063],DMK:[13.9126,100.607],
+  DMM:[26.4712,49.7979],DOH:[25.2736,51.6081],DPS:[-8.7482,115.167],DRS:[51.1328,13.7672],
+  DUB:[53.4213,-6.2701],DUR:[-29.6144,31.1197],DUS:[51.2805,6.7572],
+  EBB:[0.0424,32.4432],EDI:[55.9508,-3.3725],EGO:[50.6438,36.5901],EHU:[30.7747,120.422],
+  ERF:[50.9798,10.9581],ERC:[39.7146,39.5235],ETM:[29.7239,35.0114],ETZ:[49.0732,6.2514],EVE:[68.4913,16.6781],
+  FCA:[48.3109,-114.256],FEG:[40.0214,70.9458],FNA:[8.6163,-13.1955],FRA:[50.0379,8.5622],FSD:[43.5822,-96.7419],
+  FUK:[33.5859,130.451],FWA:[40.9785,-85.1952],
+  GAN:[-0.6933,73.1557],GAU:[26.1061,91.5859],GBE:[-24.5553,25.9182],GEG:[47.6199,-117.534],
+  GMP:[37.5583,126.794],GOI:[15.3808,73.8314],GOJ:[56.2301,43.7842],GOT:[57.6628,12.2798],
+  GRR:[42.8808,-85.5228],GUA:[14.5833,-90.5275],GXH:[34.5902,102.644],GYY:[41.6163,-87.4128],
+  HAK:[20.0022,110.459],HAN:[21.2212,105.807],HAV:[22.9892,-82.4092],HEL:[60.3172,24.9633],
+  HGI:[9.7833,9.7833],HKG:[22.308,113.915],HKT:[8.1132,98.3169],HLA:[-25.9336,28.2261],
+  HOF:[25.2853,49.485],HQQ:[15.5569,108.022],HRB:[45.6234,126.25],HRI:[6.2833,80.9167],
+  HRK:[49.9248,36.29],HYD:[17.2403,78.4294],
+  IAD:[38.9531,-77.4565],IAG:[43.1073,-78.946],IAH:[29.9902,-95.3368],ICN:[37.4602,126.44],
+  IKA:[35.4161,51.1522],ISB:[33.6167,73.0997],IST:[41.2754,28.7519],IXE:[12.9613,74.8901],IXG:[15.3625,75.0185],
+  IXM:[9.8325,78.0934],
+  JAF:[9.7924,80.0701],JAI:[26.8242,75.8122],JED:[21.6796,39.1565],JNB:[-26.1392,28.246],
+  JFK:[40.6413,-73.7781],JNU:[58.3549,-134.576],JSR:[23.1838,89.1608],
+  KBL:[34.5659,69.2123],KBV:[8.0992,98.9862],KEF:[63.9855,-22.6057],KHI:[24.9065,67.1608],
+  KIM:[-28.8,24.7667],KIX:[34.4347,135.244],KOW:[25.8253,114.912],KTI:[8.0167,98.9833],
+  KTM:[27.6966,85.3591],KUL:[2.7456,101.71],KWE:[26.5385,106.8],KWI:[29.2267,47.969],
+  LAX:[33.9425,-118.408],LED:[59.8003,30.2625],LEJ:[51.4239,12.2361],LGG:[50.6374,5.4432],
+  LGW:[51.1537,-0.1821],LHE:[31.5216,74.4036],LHR:[51.477,-0.4613],LHW:[36.5153,103.617],
+  LIM:[-12.0219,-77.1143],LIS:[38.7742,-9.1342],LJU:[46.2237,14.4576],LKO:[26.7606,80.8893],
+  LPA:[27.9319,-15.3866],LPI:[58.4062,15.68],LTN:[51.8747,-0.3683],
+  MAA:[12.9941,80.1709],MAD:[40.4936,-3.5668],MAN:[53.3537,-2.275],MED:[24.5534,39.705],
+  MEL:[-37.6733,144.843],MEX:[19.4363,-99.0721],MIA:[25.7959,-80.287],MKE:[42.9472,-87.8966],
+  MLE:[4.1918,73.5291],MLX:[38.4353,38.0909],MNL:[14.5086,121.02],MPM:[-25.9208,32.5726],
+  MQM:[37.5233,40.4042],MQP:[-25.3832,31.1006],MRU:[-20.4302,57.6836],MSN:[43.1399,-89.3375],
+  MSO:[46.9163,-114.091],MSP:[44.8848,-93.2223],MSQ:[53.8825,28.0306],MUB:[-21.1667,27.5],
+  MUC:[48.3537,11.786],MCO:[28.4294,-81.309],MCT:[23.5933,58.2844],MDT:[40.1935,-76.7634],
+  MFM:[22.1496,113.592],MFR:[42.3742,-122.873],MGQ:[2.0144,45.3047],MXP:[45.6306,8.7281],
+  NAG:[21.0922,79.0472],NBO:[-1.3192,36.9275],NKC:[18.0977,-15.9483],NKG:[32.0614,118.862],
+  NMA:[40.9846,71.5667],NNG:[22.6083,108.172],NNY:[32.9919,112.615],NRT:[35.7653,140.386],
+  NUX:[66.0,76.52],NVI:[40.1172,65.1702],NZL:[43.9061,81.3258],
+  OHD:[41.1801,20.7423],OPO:[41.2481,-8.6814],ORD:[41.9742,-87.9073],ORF:[36.8979,-76.0132],
+  ORY:[48.7244,2.3795],OXB:[11.8938,-15.6537],
+  PBH:[27.4033,89.4275],PDX:[45.5888,-122.593],PEK:[40.0799,116.603],PER:[-31.9403,115.967],
+  PFO:[34.7179,32.4857],PHL:[39.8721,-75.2411],PHX:[33.4373,-112.008],PIT:[40.4915,-80.2329],
+  PKX:[39.5093,116.41],PMI:[39.5517,2.7388],PNQ:[18.5822,73.9197],PRG:[50.1008,14.26],
+  PVG:[31.1443,121.805],
+  RDU:[35.8801,-78.7875],RIC:[37.5052,-77.3197],RIZ:[36.9242,36.3636],RMI:[44.0203,12.6117],
+  RML:[7.1817,79.8861],RMO:[41.9631,41.9631],ROB:[6.2338,-10.3623],ROI:[15.1185,103.774],
+  RUH:[24.9578,46.6987],
+  SAW:[40.8985,29.3092],SCW:[61.6614,50.8453],SDD:[-14.9247,13.5769],SEA:[47.449,-122.309],
+  SEZ:[-4.6743,55.5218],SGN:[10.8188,106.652],SHA:[31.1979,121.336],SHE:[41.6398,123.483],
+  SHL:[25.5936,91.978],SHJ:[25.3286,55.5172],SHW:[17.4669,47.1211],SID:[16.7414,-22.9494],
+  SIN:[1.3502,103.994],SKD:[39.7005,64.9657],SLL:[9.5188,-11.8847],SLY:[63.6,65.45],
+  SNO:[17.4168,100.053],SOF:[42.6952,23.4063],SVO:[55.9726,37.4146],SUB:[-7.3798,112.787],
+  SUF:[38.9052,16.2423],SVQ:[37.4179,-5.8931],SWF:[41.504,-74.1048],SYD:[-33.9461,151.177],
+  SYX:[18.3072,109.412],SZG:[47.7933,13.0043],SZX:[22.6393,113.811],
+  TAS:[41.2579,69.2819],TAO:[36.2661,120.374],TFU:[30.9858,103.887],TFS:[-28.0445,-16.5725],
+  TIR:[13.5495,79.5433],TLS:[43.6291,1.3638],TLV:[32.0055,34.8854],TMJ:[37.2867,67.3092],
+  TOS:[69.6833,18.9189],TPE:[25.0797,121.233],TRD:[63.4578,10.9239],TRF:[59.1867,10.2583],
+  TRS:[45.8275,13.4722],TRV:[8.4821,76.9201],TRZ:[10.7654,78.7093],
+  UBN:[47.6463,106.819],UGC:[41.5842,60.6417],UIO:[-0.1292,-78.3575],URC:[43.9071,87.4742],
+  USK:[65.9903,57.366],
+  VAS:[39.814,36.9004],VDA:[29.9422,35.0133],VIE:[48.1103,16.5697],VPE:[-17.72,15.2876],
+  VRN:[45.3957,10.8885],VOZ:[51.8142,39.2296],VTZ:[17.7212,83.2245],
+  WAW:[52.1657,20.9671],WUH:[30.7838,114.208],
+  XIY:[34.4471,108.752],XMN:[24.544,118.128],
+  YEI:[40.2552,29.5626],YHZ:[44.8808,-63.5086],YNT:[37.4017,121.372],YQM:[46.1122,-64.6789],
+  YUS:[32.8369,101.568],YXS:[53.8894,-122.679],YXY:[60.7961,-135.067],YYQ:[58.7403,-94.0654],
+  YYZ:[43.6772,-79.6306],
+  ZAD:[44.1083,15.2267],ZHY:[37.1733,104.959],ZIA:[55.5533,38.1497],ZRH:[47.4647,8.5492],ZYL:[24.9629,91.8675],
+  AAQ:[44.9068,37.3473],CDG:[49.0097,2.5479],CGO:[34.5197,113.841],CKG:[29.7192,106.642],CLE:[41.4117,-81.8498],
+  CNS:[-16.8858,145.755],CNX:[18.7668,98.963],DOY:[36.5281,118.879],DRW:[-12.4147,130.877],DSM:[41.534,-93.6631],
+  DSS:[14.6747,-17.0726],DTM:[51.5183,7.6122],DTW:[42.2124,-83.3534],DXB:[25.2532,55.3657],ECN:[35.1547,33.4966],
+  EWR:[40.6895,-74.1745],FCO:[41.8003,12.2389],GNY:[41.6922,29.7511],GVA:[46.2338,6.1095],HGH:[30.2295,120.434],
+  HND:[35.5494,139.78],KMG:[24.9924,102.743],LAS:[36.0801,-115.152],MST:[50.9117,5.7702],NCE:[43.6584,7.2159],
+  OSL:[60.1939,11.1004],QSR:[40.6207,14.9113],RGN:[16.9073,96.1332],RJA:[17.1104,81.8182],SFO:[37.619,-122.374],
+  STN:[51.885,0.235]
+};
+
+const _activePills={};
+
+function makePill(iata,coords,airlines){
+  const n=airlines.length;
+  const w=n*10+2;
+  const segs=airlines.map(a=>`<div class="shared-pill-seg" style="background:${a.color}"></div>`).join('');
+  const icon=L.divIcon({
+    html:`<div class="shared-pill" style="width:${w}px">${segs}</div>`,
+    className:'',iconSize:[w,13],iconAnchor:[Math.round(w/2),6]
+  });
+  const m=L.marker(coords,{icon,interactive:true,zIndexOffset:200});
+  const label=airlines.map(a=>a.name).join(' + ');
+  m.bindTooltip(`<b>${iata}</b> · ${label}`,{className:'leaflet-tooltip',permanent:false,direction:'top',offset:[0,-7]});
+  return m;
+}
+
+function updateSharedMarkers(){
+  const activeKeys=new Set(
+    Object.keys(PARTNER_AIRLINES).filter(k=>document.getElementById('po-tog-'+k)?.classList.contains('on'))
+  );
+  const phaM=window._phaMarkers||{};
+  (window._sharedAirports||[]).forEach(({iata,coords,partnerKeys})=>{
+    if(_activePills[iata]){try{map.removeLayer(_activePills[iata]);}catch(e){} delete _activePills[iata];}
+    const activeHere=partnerKeys.filter(k=>activeKeys.has(k));
+    const phaEntry=phaM[iata];
+    if(activeHere.length>0){
+      if(phaEntry) try{map.removeLayer(phaEntry.marker);}catch(e){}
+      const pillAirlines=[];
+      if(phaEntry) pillAirlines.push({key:'pha',color:'#5c158a',name:'Pan-Himalayan'});
+      activeHere.forEach(k=>pillAirlines.push({key:k,color:PARTNER_AIRLINES[k].color,name:PARTNER_AIRLINES[k].name}));
+      const pill=makePill(iata,coords,pillAirlines);
+      pill.addTo(map);
+      _activePills[iata]=pill;
+    } else {
+      if(phaEntry) try{phaEntry.marker.addTo(map);}catch(e){}
+    }
+  });
+}
+
+function addPartnerMarkers(key,data){
+  if(data._markers) data._markers.forEach(m=>m.addTo(map));
+}
+function removePartnerMarkers(key,data){
+  if(data._markers) data._markers.forEach(m=>{try{map.removeLayer(m);}catch(e){}});
+}
+
+function buildPartnerOverlay(){
+  // Pre-build markers for each partner airline
+  Object.entries(PARTNER_AIRLINES).forEach(([key,data])=>{
+    data._markers=[];
+    data.airports.forEach(iata=>{
+      const coords=IATA_COORDS[iata];
+      if(!coords) return;
+      const isPrimary=iata===data.primaryHub;
+      const isSecondary=!isPrimary&&data.secondaryHubs.includes(iata);
+      // Skip airports also served by PHA (those become pills when toggled on)
+      const phaM=window._phaMarkers||{};
+      if(phaM[iata]) return; // will be handled by pill system
+      const m=L.circleMarker(coords,{
+        radius:isPrimary?9:isSecondary?7:4,
+        fillColor:isPrimary?data.color:isSecondary?data.secondaryColor:data.color,
+        color:isPrimary?data.border:isSecondary?data.secondaryBorder:data.border,
+        weight:isPrimary?2:1.5,
+        fillOpacity:isPrimary?1:isSecondary?0.85:0.6,
+        interactive:true,
+      });
+      m.bindTooltip(`<b>${iata}</b> · ${data.name}`,{className:'leaflet-tooltip',permanent:false,direction:'top'});
+      data._markers.push(m);
+    });
+  });
+
+  // Determine shared airports (PHA + at least one partner)
+  const phaM=window._phaMarkers||{};
+  window._sharedAirports=[];
+  Object.entries(PARTNER_AIRLINES).forEach(([key,data])=>{
+    data.airports.forEach(iata=>{
+      if(!phaM[iata]) return;
+      const coords=IATA_COORDS[iata];
+      if(!coords) return;
+      let entry=window._sharedAirports.find(e=>e.iata===iata);
+      if(!entry){ entry={iata,coords,partnerKeys:[]}; window._sharedAirports.push(entry); }
+      if(!entry.partnerKeys.includes(key)) entry.partnerKeys.push(key);
+    });
+  });
+
+  // Build Leaflet control
+  const PartnerControl=L.Control.extend({
+    onAdd(){
+      const div=L.DomUtil.create('div','partner-overlay-panel');
+      L.DomEvent.disableClickPropagation(div);
+      div.innerHTML=`<div class="po-title">Partner Airlines</div>`+
+        Object.entries(PARTNER_AIRLINES).map(([k,d])=>`
+          <div class="po-row" id="po-row-${k}">
+            <div class="po-dot" style="background:${d.color}"></div>
+            <div class="po-label">${d.name}</div>
+            <div class="po-toggle" id="po-tog-${k}"></div>
+          </div>`).join('');
+      return div;
+    }
+  });
+  new PartnerControl({position:'bottomright'}).addTo(map);
+
+  Object.keys(PARTNER_AIRLINES).forEach(k=>{
+    const row=document.getElementById('po-row-'+k);
+    if(!row) return;
+    row.addEventListener('click',()=>{
+      const tog=document.getElementById('po-tog-'+k);
+      const on=tog.classList.toggle('on');
+      if(on) addPartnerMarkers(k,PARTNER_AIRLINES[k]);
+      else removePartnerMarkers(k,PARTNER_AIRLINES[k]);
+      updateSharedMarkers();
+    });
+  });
+}
+
+// Wait for PHA markers to be ready (init sets window._phaMarkers during data load)
+function waitForPhaMarkers(attempts){
+  if(window._phaMarkers && Object.keys(window._phaMarkers).length>0){
+    buildPartnerOverlay();
+  } else if((attempts||0)<40){
+    setTimeout(()=>waitForPhaMarkers((attempts||0)+1),250);
+  }
+}
+waitForPhaMarkers();
 </script>
 </body>
 </html>
